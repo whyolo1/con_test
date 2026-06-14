@@ -199,10 +199,18 @@ def raw_axis_value(raw_state: RawState, index: int) -> float:
 
 
 def stick_values_for_display(mapping: dict[str, Any], raw_state: RawState) -> dict[str, float]:
-    active = active_controls_for_state(mapping, raw_state)
+    normalized = normalize_state(raw_state, mapping)
+
+    def _get_val(name: str, fallback_axis: int) -> float:
+        val = normalized.get(name)
+        if val is not None:
+            return float(val)
+        return raw_axis_value(raw_state, fallback_axis)
+
     return {
-        "leftx": float(active.get("leftx", raw_axis_value(raw_state, 0)) or 0.0),
-        "lefty": float(active.get("lefty", raw_axis_value(raw_state, 1)) or 0.0),
-        "rightx": float(active.get("rightx", raw_axis_value(raw_state, 2)) or 0.0),
-        "righty": float(active.get("righty", raw_axis_value(raw_state, 3)) or 0.0),
+        "leftx": _get_val("leftx", 0),
+        "lefty": _get_val("lefty", 1),
+        "rightx": _get_val("rightx", 2),
+        "righty": _get_val("righty", 3),
     }
+

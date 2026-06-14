@@ -43,10 +43,35 @@ COLORS = {
 
 
 def _font(pygame: Any, size: int, *, bold: bool = False):
-    font = pygame.font.SysFont("Microsoft YaHei", size, bold=bold)
-    if font is None:
-        font = pygame.font.SysFont("Arial", size, bold=bold)
-    return font
+    # List of common Chinese fonts across Windows, macOS, and Linux (e.g. Ubuntu)
+    font_names = [
+        "microsoft yahei",
+        "microsoftyahei",
+        "pingfang sc",
+        "pingfangsc",
+        "noto sans cjk sc",
+        "notosanscjksc",
+        "noto sans cjk",
+        "notosanscjk",
+        "wenquanyi micro hei",
+        "wenquanyimicrohei",
+        "wqy-microhei",
+        "wqy-zenhei",
+        "droid sans fallback",
+        "droidsansfallback",
+        "sans-serif",
+        "sans",
+        "arial",
+    ]
+    for name in font_names:
+        path = pygame.font.match_font(name, bold=bold)
+        if path:
+            try:
+                return pygame.font.Font(path, size)
+            except Exception:
+                continue
+    return pygame.font.SysFont(None, size, bold=bold)
+
 
 
 def _draw_text(
