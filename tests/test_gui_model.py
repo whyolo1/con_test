@@ -48,6 +48,37 @@ class GuiModelTests(unittest.TestCase):
         self.assertEqual(state.mapping["controls"]["leftx"], "a0")
         self.assertEqual(state.mapping["normalization"]["axis_directions"]["leftx"], -1)
 
+    def test_stick_rebind_triggers_queue_flow(self) -> None:
+        state = GuiState.from_device(self.device())
+        state.begin_rebind("leftstick")
+        self.assertEqual(state.rebind_queue, ["leftstick", "leftx", "lefty"])
+        self.assertEqual(state.waiting_for, "leftstick")
+        self.assertFalse(state.waiting_for_release)
+
+    def test_stick_rebind_chain_transitions_correctly(self) -> None:
+        state = GuiState.from_device(self.device())
+        state.begin_rebind("leftstick")
+
+        # 1. Apply button press
+        state.apply_candidate(Candidate(code="b9", score=1.0, kind="button"))
+        self.assertEqual(state.mapping["controls"]["leftstick"], "b9")
+        self.assertEqual(state.waiting_for, "leftx")
+        self.assertTrue(state.waiting_for_release)
+
+        # 2. Apply axis X
+        state.apply_candidate(Candidate(code="a0", score=0.8, kind="axis", axis_value=0.8))
+        self.assertEqual(state.mapping["controls"]["leftx"], "a0")
+        self.assertEqual(state.mapping["normalization"]["axis_directions"]["leftx"], 1)
+        self.assertEqual(state.waiting_for, "lefty")
+        self.assertTrue(state.waiting_for_release)
+
+        # 3. Apply axis Y
+        state.apply_candidate(Candidate(code="a1", score=0.8, kind="axis", axis_value=0.8))
+        self.assertEqual(state.mapping["controls"]["lefty"], "a1")
+        self.assertEqual(state.mapping["normalization"]["axis_directions"]["lefty"], 1)
+        self.assertIsNone(state.waiting_for)
+        self.assertFalse(state.waiting_for_release)
+
     def test_active_controls_from_mapping_and_raw_state(self) -> None:
         mapping = {
             "controls": {

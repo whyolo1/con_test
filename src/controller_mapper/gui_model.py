@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -76,6 +76,8 @@ class GuiState:
     status: str = "测试模式：按手柄按钮查看高亮；点击界面按钮后可重新绑定。"
     last_raw: str = "raw: --"
     saved_path: Path | None = None
+    rebind_queue: list[str] = field(default_factory=list)
+    waiting_for_release: bool = False
 
     @classmethod
     def from_device(
@@ -97,12 +99,25 @@ class GuiState:
     def begin_rebind(self, control_name: str) -> None:
         if control_name not in CONTROL_BY_NAME:
             raise ValueError(f"unknown control: {control_name}")
-        self.waiting_for = control_name
-        title = CONTROL_BY_NAME[control_name].title_zh
-        self.status = f"正在校准 {title}：请按下实际对应的物理按钮/摇杆/扳机。"
+        
+        # If the user clicks leftstick or rightstick, trigger a chained calibration
+        # which calibrates the stick press button first, and then the X and Y axes.
+        if control_name == "leftstick":
+            self.rebind_queue = ["leftstick", "leftx", "lefty"]
+        elif control_name == "rightstick":
+            self.rebind_queue = ["rightstick", "rightx", "righty"]
+        else:
+            self.rebind_queue = [control_name]
+            
+        self.waiting_for = self.rebind_queue[0]
+        self.waiting_for_release = False
+        title = CONTROL_BY_NAME[self.waiting_for].title_zh
+        self.status = f"正在校准 {title}：请按下/推到实际对应的位置。"
 
     def cancel_rebind(self) -> None:
+        self.rebind_queue = []
         self.waiting_for = None
+        self.waiting_for_release = False
         self.status = "已取消当前校准。"
 
     def apply_candidate(self, candidate: Candidate) -> None:
@@ -124,9 +139,32 @@ class GuiState:
             }
 
         self.dirty = True
-        self.waiting_for = None
-        title = CONTROL_BY_NAME[control_name].title_zh
-        self.status = f"已绑定 {title} -> {candidate.code}。按 S 或点击保存写入文件。"
+        
+        if self.rebind_queue and self.rebind_queue[0] == control_name:
+            self.rebind_queue.pop(0)
+
+        if self.rebind_queue:
+            self.waiting_for = self.rebind_queue[0]
+            self.waiting_for_release = True
+            
+            next_control = self.waiting_for
+            title = CONTROL_BY_NAME[next_control].title_zh
+            if next_control == "leftx":
+                action_prompt = "请将左摇杆向右推到底"
+            elif next_control == "lefty":
+                action_prompt = "请将左摇杆向下推到底"
+            elif next_control == "rightx":
+                action_prompt = "请将右摇杆向右推到底"
+            elif next_control == "righty":
+                action_prompt = "请将右摇杆向下推到底"
+            else:
+                action_prompt = f"请操作 {title}"
+            self.status = f"已绑定 {CONTROL_BY_NAME[control_name].title_zh}。请先释放手柄，然后：{action_prompt}。"
+        else:
+            self.waiting_for = None
+            self.waiting_for_release = False
+            title = CONTROL_BY_NAME[control_name].title_zh
+            self.status = f"已绑定 {title} -> {candidate.code}。按 S 或点击保存写入文件。"
 
     def active_controls(self, raw_state: RawState) -> dict[str, bool | float]:
         return active_controls_for_state(self.mapping, raw_state)

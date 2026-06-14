@@ -364,6 +364,7 @@ def run_gui(
         screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
         clock = pygame.time.Clock()
         baseline_for_binding = reader.snapshot(joystick)
+        idle_baseline = baseline_for_binding
         previous = baseline_for_binding
         pressed_button: str | None = None
         previous_mouse_down = False
@@ -401,6 +402,7 @@ def run_gui(
                     if selected_control:
                         state.begin_rebind(selected_control)
                         baseline_for_binding = reader.snapshot(joystick)
+                        idle_baseline = baseline_for_binding
             elif not mouse_down and previous_mouse_down:
                 if pressed_button == "save" and SAVE_BUTTON.contains(point):
                     _save_gui_mapping(state, output_dir)
@@ -420,18 +422,27 @@ def run_gui(
                 state.last_raw = "raw: " + " | ".join(diffs[-3:])
 
             if state.waiting_for:
-                spec = CONTROL_BY_NAME[state.waiting_for]
-                candidates = detect_candidates(
-                    baseline_for_binding,
-                    current,
-                    expected_kind=spec.kind,
-                    threshold=DEFAULT_CAPTURE_THRESHOLD,
-                )
-                if candidates:
-                    candidate = candidates[0]
-                    state.last_raw = f"raw: {candidate.code}"
-                    state.apply_candidate(candidate)
-                    baseline_for_binding = current
+                if state.waiting_for_release:
+                    # Check if controller has returned to idle baseline (all axes and buttons released)
+                    release_diffs = diff_raw_states(idle_baseline, current, axis_threshold=0.15)
+                    if not release_diffs:
+                        state.waiting_for_release = False
+                        baseline_for_binding = current
+                        state.last_raw = "raw: --"
+                else:
+                    spec = CONTROL_BY_NAME[state.waiting_for]
+                    candidates = detect_candidates(
+                        baseline_for_binding,
+                        current,
+                        expected_kind=spec.kind,
+                        threshold=DEFAULT_CAPTURE_THRESHOLD,
+                    )
+                    if candidates:
+                        candidate = candidates[0]
+                        state.last_raw = f"raw: {candidate.code}"
+                        state.apply_candidate(candidate)
+                        if not state.waiting_for_release:
+                            baseline_for_binding = current
 
             screen.fill(COLORS["background"])
             _draw_header(
